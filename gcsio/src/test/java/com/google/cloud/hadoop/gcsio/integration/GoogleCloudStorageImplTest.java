@@ -127,63 +127,6 @@ public class GoogleCloudStorageImplTest {
     }
   }
 
-  @Test
-  public void runDeleteFolderTest() throws InterruptedException {
-    String bucketName = "testbucket";
-    ArrayDeque<String> queue = new ArrayDeque<>();
-    List<FolderInfo> foldersToDelete = new LinkedList<>();
-    for (int i = 0; i < 10; i++) {
-      addFolder(queue, "f" + i, foldersToDelete);
-    }
-
-    int limit = 100_0000;
-
-    while (foldersToDelete.size() < limit) {
-      int size = queue.size();
-      for (int j = 0; j < size && foldersToDelete.size() < limit; j++) {
-        String parent = queue.removeFirst();
-        for (int i = 0; i < 200; i++) {
-          int val = ThreadLocalRandom.current().nextInt(1, 1000_00
-          );
-          String tag = getTag(val);
-          addFolder(queue, String.format("%s/f%s%s", parent, i, tag), foldersToDelete);
-        }
-      }
-    }
-
-    System.out.println(foldersToDelete.size());
-
-    try {
-
-      helperGcs.deleteFolders(foldersToDelete);
-    } catch (IOException e) {
-      System.err.println("An IOException occurred: " + e.getMessage());
-    }
-    // MyStorageClient client = new MyStorageClient();
-    // DeleteFolderOperation deleteFolderOperation =
-    //     new DeleteFolderOperation(foldersToDelete, GoogleCloudStorageOptions.DEFAULT, client);
-    // deleteFolderOperation.performDeleteOperation();
-    //
-    // System.out.println(String.format("Success=%s of %s", deleteFolderOperation.success, foldersToDelete.size()));
-  }
-
-  private static String getTag(int val) {
-    switch (val) {
-      case 10: return "notfound";
-      case 11: return "failedpc";
-      case 12: return "failother";
-      case 13: return "failruntime";
-      case 14: return "sleep";
-      default: return "";
-    }
-
-  }
-
-  private static void addFolder(ArrayDeque<String> queue, String name, List<FolderInfo> toDelete) {
-    queue.addLast(name);
-    toDelete.add(new FolderInfo(FolderInfo.createFolderInfoObject("testbucket", name)));
-  }
-
 
   @Test
   public void open_lazyInit_whenFastFailOnNotFound_isFalse() throws IOException {
