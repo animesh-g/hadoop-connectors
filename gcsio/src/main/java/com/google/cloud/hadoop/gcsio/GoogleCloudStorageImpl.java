@@ -792,8 +792,11 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
   @Override
   public void deleteFolders(List<FolderInfo> folders) throws IOException {
     String traceContext = String.format("batchFolderDelete(size=%s)", folders.size());
+    // DeleteFolderOperation deleteFolderOperation =
+    //     new DeleteFolderOperation(folders, storageOptions, lazyGetStorageControlClient());
+    MyStorageClient myStorageControlClient = new MyStorageClient();
     DeleteFolderOperation deleteFolderOperation =
-        new DeleteFolderOperation(folders, storageOptions, lazyGetStorageControlClient());
+        new DeleteFolderOperation(folders, storageOptions, myStorageControlClient);
     try (ITraceOperation to = TraceOperation.addToExistingTrace(traceContext)) {
       deleteFolderOperation.performDeleteOperation();
     } catch (InterruptedException e) {

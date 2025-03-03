@@ -32,13 +32,16 @@ import com.google.auth.Credentials;
 import com.google.cloud.hadoop.gcsio.AssertingLogHandler;
 import com.google.cloud.hadoop.gcsio.CreateBucketOptions;
 import com.google.cloud.hadoop.gcsio.CreateObjectOptions;
+// import com.google.cloud.hadoop.gcsio.DeleteFolderOperation;
 import com.google.cloud.hadoop.gcsio.EventLoggingHttpRequestInitializer;
+import com.google.cloud.hadoop.gcsio.FolderInfo;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorage;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageClientImpl;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageImpl;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageItemInfo;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageOptions;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageReadOptions;
+import com.google.cloud.hadoop.gcsio.MyStorageClient;
 import com.google.cloud.hadoop.gcsio.StorageResourceId;
 import com.google.cloud.hadoop.gcsio.TrackingGrpcRequestInterceptor;
 import com.google.cloud.hadoop.gcsio.TrackingHttpRequestInitializer;
@@ -52,10 +55,13 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -120,6 +126,64 @@ public class GoogleCloudStorageImplTest {
       helperGcs.close();
     }
   }
+
+  @Test
+  public void runDeleteFolderTest() throws InterruptedException {
+    String bucketName = "testbucket";
+    ArrayDeque<String> queue = new ArrayDeque<>();
+    List<FolderInfo> foldersToDelete = new LinkedList<>();
+    for (int i = 0; i < 10; i++) {
+      addFolder(queue, "f" + i, foldersToDelete);
+    }
+
+    int limit = 100_0000;
+
+    while (foldersToDelete.size() < limit) {
+      int size = queue.size();
+      for (int j = 0; j < size && foldersToDelete.size() < limit; j++) {
+        String parent = queue.removeFirst();
+        for (int i = 0; i < 200; i++) {
+          int val = ThreadLocalRandom.current().nextInt(1, 1000_00
+          );
+          String tag = getTag(val);
+          addFolder(queue, String.format("%s/f%s%s", parent, i, tag), foldersToDelete);
+        }
+      }
+    }
+
+    System.out.println(foldersToDelete.size());
+
+    try {
+
+      helperGcs.deleteFolders(foldersToDelete);
+    } catch (IOException e) {
+      System.err.println("An IOException occurred: " + e.getMessage());
+    }
+    // MyStorageClient client = new MyStorageClient();
+    // DeleteFolderOperation deleteFolderOperation =
+    //     new DeleteFolderOperation(foldersToDelete, GoogleCloudStorageOptions.DEFAULT, client);
+    // deleteFolderOperation.performDeleteOperation();
+    //
+    // System.out.println(String.format("Success=%s of %s", deleteFolderOperation.success, foldersToDelete.size()));
+  }
+
+  private static String getTag(int val) {
+    switch (val) {
+      case 10: return "notfound";
+      case 11: return "failedpc";
+      case 12: return "failother";
+      case 13: return "failruntime";
+      case 14: return "sleep";
+      default: return "";
+    }
+
+  }
+
+  private static void addFolder(ArrayDeque<String> queue, String name, List<FolderInfo> toDelete) {
+    queue.addLast(name);
+    toDelete.add(new FolderInfo(FolderInfo.createFolderInfoObject("testbucket", name)));
+  }
+
 
   @Test
   public void open_lazyInit_whenFastFailOnNotFound_isFalse() throws IOException {
