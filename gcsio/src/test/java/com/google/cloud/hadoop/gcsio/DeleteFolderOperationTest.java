@@ -18,6 +18,7 @@ import static com.google.common.truth.Truth.assertThat;
 import com.google.common.base.Strings;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.storage.control.v2.StorageControlClient;
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,11 +26,69 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import org.junit.Test;
 
 public class DeleteFolderOperationTest {
 
   private static final String BUCKET_NAME = "foo-bucket";
+
+  @Test
+  public void testFailure() throws InterruptedException, IOException {
+    for (int i =0; i < 1; i++) {
+      runTest();
+    }
+  }
+
+  private static void runTest() throws InterruptedException {
+    String bucketName = "testbucket";
+    ArrayDeque<String> queue = new ArrayDeque<>();
+    List<FolderInfo> foldersToDelete = new LinkedList<>();
+    for (int i = 0; i < 10; i++) {
+      addFolder(queue, "f" + i, foldersToDelete);
+    }
+
+    int limit = 100_0000;
+
+    while (foldersToDelete.size() < limit) {
+      int size = queue.size();
+      for (int j = 0; j < size && foldersToDelete.size() < limit; j++) {
+        String parent = queue.removeFirst();
+        for (int i = 0; i < 200; i++) {
+          int val = ThreadLocalRandom.current().nextInt(1, 1000_00
+          );
+          String tag = getTag(val);
+          addFolder(queue, String.format("%s/f%s%s", parent, i, tag), foldersToDelete);
+        }
+      }
+    }
+
+    System.out.println(foldersToDelete.size());
+    MyStorageClient client = new MyStorageClient();
+    DeleteFolderOperation deleteFolderOperation =
+        new DeleteFolderOperation(foldersToDelete, GoogleCloudStorageOptions.DEFAULT, client);
+    deleteFolderOperation.performDeleteOperation();
+
+    System.out.println(String.format("Success=%s of %s", deleteFolderOperation.success, foldersToDelete.size()));
+  }
+
+  private static String getTag(int val) {
+    switch (val) {
+      case 10: return "notfound";
+      case 11: return "failedpc";
+      case 12: return "failother";
+      case 13: return "failruntime";
+      case 14: return "sleep";
+      default: return "";
+    }
+
+  }
+
+  private static void addFolder(ArrayDeque<String> queue, String name, List<FolderInfo> toDelete) {
+    queue.addLast(name);
+    toDelete.add(new FolderInfo(FolderInfo.createFolderInfoObject("testbucket", name)));
+  }
+
 
   @Test
   public void checkDeletionOrderForHnBucketBalancedFolders() throws InterruptedException {
