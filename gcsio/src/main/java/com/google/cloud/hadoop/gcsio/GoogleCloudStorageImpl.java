@@ -127,6 +127,8 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
 
   private static final String USER_PROJECT_FIELD_NAME = "userProject";
 
+  private static final int MAXIMUM_RETRY_COUNT_IN_FOLDER_DELETE = 1;
+
   static final CreateObjectOptions EMPTY_OBJECT_CREATE_OPTIONS =
       CreateObjectOptions.DEFAULT_OVERWRITE.toBuilder()
           .setEnsureEmptyObjectsMetadataMatch(false)
@@ -797,15 +799,26 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
     MyStorageClient myStorageControlClient = new MyStorageClient();
     DeleteFolderOperation deleteFolderOperation =
         new DeleteFolderOperation(folders, storageOptions, myStorageControlClient);
-    try (ITraceOperation to = TraceOperation.addToExistingTrace(traceContext)) {
-      deleteFolderOperation.performDeleteOperation();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException(
-          String.format(
-              "Recieved thread interruption exception while deletion of folder resource : %s",
-              e.getMessage()),
-          e);
+    for (int attempt = 1; attempt <= MAXIMUM_RETRY_COUNT_IN_FOLDER_DELETE; attempt++) {
+      try (ITraceOperation to = TraceOperation.addToExistingTrace(traceContext)) {
+        deleteFolderOperation.performDeleteOperation();
+        break;
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IOException(
+            String.format(
+                "Received thread interruption exception while deletion of folder resource : %s",
+                e.getMessage()),
+            e);
+      } catch (IllegalStateException e) {
+        if (attempt == MAXIMUM_RETRY_COUNT_IN_FOLDER_DELETE) {
+          logger.atSevere().withCause(e)
+              .log("Failed to delete folders after %d attempts", MAXIMUM_RETRY_COUNT_IN_FOLDER_DELETE);
+          throw e; // Re-throw the exception after all retries are exhausted
+        }
+        logger.atWarning().withCause(e)
+            .log("Attempt %d to delete folders failed, retrying...", attempt);
+      }
     }
 
     if (!deleteFolderOperation.encounteredNoExceptions()) {
