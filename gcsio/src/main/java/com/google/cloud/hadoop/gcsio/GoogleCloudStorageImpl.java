@@ -2254,20 +2254,18 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
       return isEnabled;
     }
 
-    boolean result = false;
+    Storage.Buckets.GetStorageLayout request =
+        initializeRequest(storage.buckets().getStorageLayout(bucketName), bucketName);
+    try (ITraceOperation to = TraceOperation.addToExistingTrace("getStorageLayout.HN")) {
+      BucketStorageLayout b = request.execute();
+      boolean result = b.getHierarchicalNamespace().getEnabled();
 
-      Storage.Buckets.GetStorageLayout request =
-          initializeRequest(storage.buckets().getStorageLayout(bucketName), bucketName);
-      try (ITraceOperation to = TraceOperation.addToExistingTrace("getStorageLayout.HN")) {
-        BucketStorageLayout b = request.execute();
-        result = b.getHierarchicalNamespace().getEnabled();
-      }
+      logger.atInfo().log("Checking if %s is HN enabled returned %s", src, result);
 
-    logger.atInfo().log("Checking if %s is HN enabled returned %s", src, result);
+      cache.put(bucketName, result);
 
-    cache.put(bucketName, result);
-
-    return result;
+      return result;
+    }
   }
 
   private StorageControlClient lazyGetStorageControlClient() throws IOException {
