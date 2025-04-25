@@ -25,8 +25,6 @@ import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toMap;
 
-import com.google.cloud.hadoop.gcsio.GoogleCloudStorage;
-import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 import com.google.common.collect.ImmutableList;
 import com.google.common.flogger.GoogleLogger;
 import com.google.common.util.concurrent.Futures;
@@ -50,9 +48,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-import java.util.function.Function;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -166,277 +161,8 @@ public class FsBenchmark extends Configured implements Tool {
         return benchmarkRead(fs, cmdArgs);
       case "random-read":
         return benchmarkRandomRead(fs, cmdArgs);
-      case "hns-bucket":
-        return benchmarkIsHnBucket(fs, cmdArgs);
     }
     throw new IllegalArgumentException("Unknown command: " + cmd);
-  }
-
-  private int benchmarkIsHnBucket(FileSystem fs, Map<String, String> args) {
-    if (args.size() < 1) {
-      System.err.println(
-          "Usage: hns-bucket"
-              + " --bucket=gs://${BUCKET}"
-              + " [--use-global-flag=Use Global flag instead of isHnBucket]");
-      return 1;
-    }
-
-    // String bucketName = args.getOrDefault("--bucket", "");
-
-    // Path testFile = new Path(args.get("--file"));
-    // String argValue = args.getOrDefault("--assume-bucket-name-as-prefix", "false");
-    // boolean assumeBucketNameAsPrefix = Boolean.parseBoolean(argValue);
-
-    String bucketStr = args.get("--bucket");
-    Path bucketPath = new Path(args.getOrDefault("--bucket", ""));
-
-    // PrintLineNumber.print("bucketStr  : " + bucketStr);
-    // PrintLineNumber.print("bucketPath : " + bucketPath);
-
-    // PrintLineNumber.print("toUri::getPath : " + bucketPath.toUri().getPath());
-    URI tempUri = URI.create(bucketStr);
-    // PrintLineNumber.print("uri::getPath   : " + tempUri.getPath());
-
-    int numThreads = 1;
-    if (args.containsKey("--use-global-flag")) {
-      // PrintLineNumber.print("");
-      benchmarkIsHnBucketGlobalConfig(fs, bucketPath, numThreads);
-      // PrintLineNumber.print("");
-    } else if (args.containsKey("--use-pre-bucket-call")) {
-      // PrintLineNumber.print("");
-      benchmarkIsHnBucketWithOneDefaultCall(fs, bucketPath, numThreads);
-      // PrintLineNumber.print("");
-    } else {
-      // PrintLineNumber.print("");
-      benchmarkIsHnBucket(fs, bucketPath, numThreads);
-      // PrintLineNumber.print("");
-    }
-    // PrintLineNumber.print("");
-    return 0;
-  }
-
-  private void benchmarkIsHnEnabled(FileSystem fs, Path bucketPath, int numThreads) {
-    System.out.printf(
-        "Running isHnBucket test on '%s' bucket in %d threads%n", bucketPath, numThreads);
-
-    Set<LongSummaryStatistics> timeNsList = newSetFromMap(new ConcurrentHashMap<>());
-
-    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-    CountDownLatch initLatch = new CountDownLatch(numThreads);
-    CountDownLatch startLatch = new CountDownLatch(1);
-    CountDownLatch stopLatch = new CountDownLatch(numThreads);
-    List<Future<?>> futures = new ArrayList<>(numThreads);
-
-    // TODO Write code for getting value for benchamarking function
-
-    for (int i = 0; i < numThreads; i++) {
-      futures.add(
-          executor.submit(
-              () -> {
-                LongSummaryStatistics actionSummaryStatistics =
-                    newLongSummaryStatistics(timeNsList);
-
-                initLatch.countDown();
-                startLatch.await();
-                // PrintLineNumber.print("");
-                try {
-                  long operationStartTime = System.nanoTime();
-
-                  // TODO Perform function call
-
-                  // PrintLineNumber.print("");
-                  actionSummaryStatistics.accept(System.nanoTime() - operationStartTime);
-
-                } finally {
-                  // PrintLineNumber.print("");
-                  stopLatch.countDown();
-                }
-                // PrintLineNumber.print("");
-                return null;
-              }));
-    }
-    // PrintLineNumber.print("");
-    executor.shutdown();
-    // PrintLineNumber.print("");
-
-    awaitUnchecked(initLatch);
-    // PrintLineNumber.print("");
-    long startTimeNs = System.nanoTime();
-    startLatch.countDown();
-    // PrintLineNumber.print("");
-    awaitUnchecked(stopLatch);
-    // PrintLineNumber.print("");
-    long runtimeNs = System.nanoTime() - startTimeNs;
-    // PrintLineNumber.print("");
-    // Verify that all threads completed without errors
-    futures.forEach(Futures::getUnchecked);
-    // PrintLineNumber.print("");
-
-    printTimeStats("isHnBucket time", timeNsList);
-
-    System.out.printf(
-        "Animesh:: isHnBucket average time (ms): %.3f%n",
-        nanosToMillis(combineStats(timeNsList).getAverage()));
-    // PrintLineNumber.print("");
-  }
-
-  private void benchmarkIsHnBucketGlobalConfig(FileSystem fs, Path bucketPath, int numThreads) {
-    System.out.printf(
-        "Running isHnBucket test on '%s' bucket in %d threads%n", bucketPath, numThreads);
-
-    Set<LongSummaryStatistics> isHnBucketTimeNsList = newSetFromMap(new ConcurrentHashMap<>());
-
-    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-    CountDownLatch initLatch = new CountDownLatch(numThreads);
-    CountDownLatch startLatch = new CountDownLatch(1);
-    CountDownLatch stopLatch = new CountDownLatch(numThreads);
-    List<Future<?>> futures = new ArrayList<>(numThreads);
-
-    GoogleHadoopFileSystem myghfs = (GoogleHadoopFileSystem) fs;
-    GoogleCloudStorageFileSystem gcsfs = myghfs.getGcsFs();
-    GoogleCloudStorage gcs = gcsfs.getGcs();
-    URI uri = bucketPath.toUri();
-    // PrintLineNumber.print("");
-    for (int i = 0; i < numThreads; i++) {
-      futures.add(
-          executor.submit(
-              () -> {
-                LongSummaryStatistics isHnBucketTimeNs =
-                    newLongSummaryStatistics(isHnBucketTimeNsList);
-
-                initLatch.countDown();
-                startLatch.await();
-                // PrintLineNumber.print("");
-                try {
-                  long isHnBucketStart = System.nanoTime();
-                  // PrintLineNumber.print("");
-                  boolean isHnBucket =
-                      gcsfs.getOptions().getCloudStorageOptions().isHnBucketRenameEnabled();
-                  // PrintLineNumber.print("");
-                  isHnBucketTimeNs.accept(System.nanoTime() - isHnBucketStart);
-                } finally {
-                  // PrintLineNumber.print("");
-                  stopLatch.countDown();
-                }
-                // PrintLineNumber.print("");
-                return null;
-              }));
-    }
-    // PrintLineNumber.print("");
-    executor.shutdown();
-    // PrintLineNumber.print("");
-
-    awaitUnchecked(initLatch);
-    // PrintLineNumber.print("");
-    long startTimeNs = System.nanoTime();
-    startLatch.countDown();
-    // PrintLineNumber.print("");
-    awaitUnchecked(stopLatch);
-    // PrintLineNumber.print("");
-    long runtimeNs = System.nanoTime() - startTimeNs;
-    // PrintLineNumber.print("");
-    // Verify that all threads completed without errors
-    futures.forEach(Futures::getUnchecked);
-    // PrintLineNumber.print("");
-
-    printTimeStats("isHnBucket time", isHnBucketTimeNsList);
-
-    System.out.printf(
-        "Animesh: isHnBucket average time (ms): %.3f%n",
-        nanosToMillis(combineStats(isHnBucketTimeNsList).getAverage()));
-    // PrintLineNumber.print("");
-  }
-
-  private void benchmarkIsHnBucketWithOneDefaultCall(
-      FileSystem fs, Path bucketPath, int numThreads) {
-    System.out.printf(
-        "Running isHnsBucket on dummy bucket gs://rpodar-test-bucket/utils/test.sh to ensure Connection is initialized/n");
-    GoogleHadoopFileSystem myghfs = (GoogleHadoopFileSystem) fs;
-    GoogleCloudStorageFileSystem gcsfs = myghfs.getGcsFs();
-    GoogleCloudStorage gcs = gcsfs.getGcs();
-    Path defaultBucketPath = new Path("gs://rpodar-test-bucket/utils/test.sh");
-    URI uri = defaultBucketPath.toUri();
-    try {
-      gcs.isHnBucket(uri);
-    } catch (IOException e) {
-      // PrintLineNumber.print("");
-      logger.atSevere().withCause(e).log("Failed isHnBucket on '%s'", bucketPath);
-    }
-    System.out.printf("Connection initialization must be done by now/n");
-    benchmarkIsHnBucket(fs, bucketPath, numThreads);
-
-    // PrintLineNumber.print("");
-  }
-
-  private void benchmarkIsHnBucket(FileSystem fs, Path bucketPath, int numThreads) {
-    System.out.printf(
-        "Running isHnBucket test on '%s' bucket in %d threads%n", bucketPath, numThreads);
-
-    Set<LongSummaryStatistics> isHnBucketTimeNsList = newSetFromMap(new ConcurrentHashMap<>());
-
-    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-    CountDownLatch initLatch = new CountDownLatch(numThreads);
-    CountDownLatch startLatch = new CountDownLatch(1);
-    CountDownLatch stopLatch = new CountDownLatch(numThreads);
-    List<Future<?>> futures = new ArrayList<>(numThreads);
-
-    GoogleHadoopFileSystem myghfs = (GoogleHadoopFileSystem) fs;
-    GoogleCloudStorageFileSystem gcsfs = myghfs.getGcsFs();
-    GoogleCloudStorage gcs = gcsfs.getGcs();
-    URI uri = bucketPath.toUri();
-    // PrintLineNumber.print("");
-    for (int i = 0; i < numThreads; i++) {
-      futures.add(
-          executor.submit(
-              () -> {
-                LongSummaryStatistics isHnBucketTimeNs =
-                    newLongSummaryStatistics(isHnBucketTimeNsList);
-
-                initLatch.countDown();
-                startLatch.await();
-                // PrintLineNumber.print("");
-                try {
-                  long isHnBucketStart = System.nanoTime();
-                  // PrintLineNumber.print("");
-                  boolean isHnBucket = gcs.isHnBucket(uri);
-                  // PrintLineNumber.print("");
-                  isHnBucketTimeNs.accept(System.nanoTime() - isHnBucketStart);
-                  // PrintLineNumber.print("Bucket : " + bucketPath + " isHnBucket : " +
-                  // isHnBucket);
-                } catch (IOException e) {
-                  // PrintLineNumber.print("");
-                  logger.atSevere().withCause(e).log("Failed isHnBucket on '%s'", bucketPath);
-                } finally {
-                  // PrintLineNumber.print("");
-                  stopLatch.countDown();
-                }
-                // PrintLineNumber.print("");
-                return null;
-              }));
-    }
-    // PrintLineNumber.print("");
-    executor.shutdown();
-    // PrintLineNumber.print("");
-
-    awaitUnchecked(initLatch);
-    // PrintLineNumber.print("");
-    long startTimeNs = System.nanoTime();
-    startLatch.countDown();
-    // PrintLineNumber.print("");
-    awaitUnchecked(stopLatch);
-    // PrintLineNumber.print("");
-    long runtimeNs = System.nanoTime() - startTimeNs;
-    // PrintLineNumber.print("");
-    // Verify that all threads completed without errors
-    futures.forEach(Futures::getUnchecked);
-    // PrintLineNumber.print("");
-
-    printTimeStats("isHnBucket time", isHnBucketTimeNsList);
-
-    System.out.printf(
-        "isHnBucket average time (ms): %.3f%n",
-        nanosToMillis(combineStats(isHnBucketTimeNsList).getAverage()));
-    // PrintLineNumber.print("");
   }
 
   private int benchmarkWrite(FileSystem fs, Map<String, String> args) {
@@ -456,10 +182,10 @@ public class FsBenchmark extends Configured implements Tool {
     benchmarkWrite(
         fs,
         testFile,
-        parseInt(args.getOrDefault("--write-size", String.valueOf(10240))),
-        parseInt(args.getOrDefault("--num-writes", String.valueOf(10))),
-        parseInt(args.getOrDefault("--num-threads", String.valueOf(10))),
-        parseLong(args.getOrDefault("--total-size", String.valueOf(100 * 1024))));
+        parseInt(args.getOrDefault("--write-size", String.valueOf(1024))),
+        parseInt(args.getOrDefault("--num-writes", String.valueOf(1))),
+        parseInt(args.getOrDefault("--num-threads", String.valueOf(1))),
+        parseLong(args.getOrDefault("--total-size", String.valueOf(10 * 1024))));
 
     return 0;
   }
@@ -539,17 +265,16 @@ public class FsBenchmark extends Configured implements Tool {
     // Verify that all threads completed without errors
     futures.forEach(Futures::getUnchecked);
 
-    System.out.print(" mera code chal gaya bhai\n");
-    printTimeStats(" local Write call time", writeCallTimeNsList);
-    printSizeStats("local Write call data", writeCallBytesList);
-    printThroughputStats("local Write call throughput", writeCallTimeNsList, writeCallBytesList);
+    printTimeStats("Write call time", writeCallTimeNsList);
+    printSizeStats("Write call data", writeCallBytesList);
+    printThroughputStats("Write call throughput", writeCallTimeNsList, writeCallBytesList);
 
-    printTimeStats("local Write file time", writeFileTimeNsList);
-    printSizeStats("local Write file data", writeFileBytesList);
-    printThroughputStats("local Write file throughput", writeFileTimeNsList, writeFileBytesList);
+    printTimeStats("Write file time", writeFileTimeNsList);
+    printSizeStats("Write file data", writeFileBytesList);
+    printThroughputStats("Write file throughput", writeFileTimeNsList, writeFileBytesList);
 
     System.out.printf(
-        "local Write average throughput (MiB/s): %.3f%n",
+        "Write average throughput (MiB/s): %.3f%n",
         bytesToMebibytes(combineStats(writeFileBytesList).getSum()) / nanosToSeconds(runtimeNs));
   }
 
@@ -913,124 +638,5 @@ public class FsBenchmark extends Configured implements Tool {
 
   private static double bytesToMebibytes(double bytes) {
     return bytes / 1024 / 1024;
-  }
-
-  // TODO: rpodar writing generic function for benchmarking.
-  private void fooTest(FileSystem fs, Path bucketPath, int numThreads) {
-    // Implementation for Block B for isHnBucket
-    Function<FileSystem, GoogleCloudStorage> isHnBlockB =
-        (innerFs) -> {
-          GoogleHadoopFileSystem myghfs = (GoogleHadoopFileSystem) innerFs;
-          GoogleCloudStorageFileSystem gcsfs = myghfs.getGcsFs();
-          return gcsfs.getGcs();
-        };
-
-    // Implementation for Block D for isHnBucket
-    BiConsumer<GoogleCloudStorage, Consumer<Long>> isHnBlockD =
-        (gcs, timeConsumer) -> {
-          URI uri = new Path("gs://your-bucket-name").toUri(); // Need a Path here
-          try {
-            long startTime = System.nanoTime();
-            boolean isHnBucket = gcs.isHnBucket(uri);
-            timeConsumer.accept(System.nanoTime() - startTime);
-            System.out.println("Bucket isHnBucket: " + isHnBucket);
-          } catch (IOException e) {
-            logger.atSevere().withCause(e).log("Failed isHnBucket");
-          }
-        };
-    benchmarkFunctions(fs, bucketPath, numThreads, "isHnBucket", isHnBlockB, isHnBlockD);
-  }
-
-  private <PreStep_INPUT, PreStep_OUTPUT, PostStep_INPUT, PostStep_OUTPUT> void benchmarkFunctions(
-      FileSystem fs,
-      Path bucketPath,
-      int numThreads,
-      String functionName,
-      Function<FileSystem, PreStep_OUTPUT> blockBFunction,
-      BiConsumer<PreStep_OUTPUT, Consumer<Long>> blockDConsumer) {
-    // Need to be fetch
-    System.out.printf(
-        "Running %s test on '%s' bucket in %d threads%n", functionName, bucketPath, numThreads);
-
-    Set<LongSummaryStatistics> summaryTimeNsList = newSetFromMap(new ConcurrentHashMap<>());
-
-    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-    CountDownLatch initLatch = new CountDownLatch(numThreads);
-    CountDownLatch startLatch = new CountDownLatch(1);
-    CountDownLatch stopLatch = new CountDownLatch(numThreads);
-    List<Future<?>> futures = new ArrayList<>(numThreads);
-
-    // Part of Block B - starts here
-    // GoogleHadoopFileSystem myghfs = (GoogleHadoopFileSystem) fs;
-    // GoogleCloudStorageFileSystem gcsfs = myghfs.getGcsFs();
-    // GoogleCloudStorage gcs = gcsfs.getGcs();
-    // URI uri = bucketPath.toUri();
-    // Block B - Executed once before threads start
-    PreStep_OUTPUT blockBResult = blockBFunction.apply(fs);
-    // Part of Block B - ends here
-
-    for (int i = 0; i < numThreads; i++) {
-      futures.add(
-          executor.submit(
-              () -> {
-                LongSummaryStatistics summaryTimeNs = newLongSummaryStatistics(summaryTimeNsList);
-
-                initLatch.countDown();
-                startLatch.await();
-                // PrintLineNumber.print("");
-
-                // Part of Block D - starts here
-
-                // Block D - Executed in each thread
-                try {
-                  blockDConsumer.accept(blockBResult, (timeNs) -> summaryTimeNs.accept(timeNs));
-                } finally {
-                  stopLatch.countDown();
-                }
-
-                // try {
-                //   long isHnBucketStart = System.nanoTime();
-                //   // PrintLineNumber.print("");
-                //   boolean isHnBucket = gcs.isHnBucket(uri);
-                //   // PrintLineNumber.print("");
-                //   summaryTimeNs.accept(System.nanoTime() - isHnBucketStart);
-                //   // PrintLineNumber.print("Bucket : " + bucketPath + " isHnBucket : " +
-                //   // isHnBucket);
-                // } catch (IOException e) {
-                //   // PrintLineNumber.print("");
-                //   logger.atSevere().withCause(e).log("Failed isHnBucket on '%s'", bucketPath);
-                // } finally {
-                //   // PrintLineNumber.print("");
-                //   stopLatch.countDown();
-                // }
-                // Part of Block D - ends here
-
-                // PrintLineNumber.print("");
-                return null;
-              }));
-    }
-    // PrintLineNumber.print("");
-    executor.shutdown();
-    // PrintLineNumber.print("");
-
-    awaitUnchecked(initLatch);
-    // PrintLineNumber.print("");
-    long startTimeNs = System.nanoTime();
-    startLatch.countDown();
-    // PrintLineNumber.print("");
-    awaitUnchecked(stopLatch);
-    // PrintLineNumber.print("");
-    long runtimeNs = System.nanoTime() - startTimeNs;
-    // PrintLineNumber.print("");
-    // Verify that all threads completed without errors
-    futures.forEach(Futures::getUnchecked);
-    // PrintLineNumber.print("");
-
-    printTimeStats(functionName + " time", summaryTimeNsList);
-
-    System.out.printf(
-        "%s average time (ms): %.3f%n",
-        functionName, nanosToMillis(combineStats(summaryTimeNsList).getAverage()));
-    // PrintLineNumber.print("");
   }
 }
