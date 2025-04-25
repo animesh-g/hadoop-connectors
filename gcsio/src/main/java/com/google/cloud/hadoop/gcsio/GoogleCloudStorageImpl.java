@@ -2256,33 +2256,12 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
 
     boolean result = false;
 
-    boolean shouldUseApiary = true;
-    if (shouldUseApiary) {
-      Storage.Buckets.GetStorageLayout req =
+      Storage.Buckets.GetStorageLayout request =
           initializeRequest(storage.buckets().getStorageLayout(bucketName), bucketName);
-      BucketStorageLayout b = req.execute();
-      result = b.getHierarchicalNamespace().getEnabled();
-      System.out.printf("Result using Apiary client");
-
-    } else {
-
-      String prefix = src.getPath().substring(1);
-
-      StorageControlClient storageControlClient = lazyGetStorageControlClient();
-      GetStorageLayoutRequest request =
-          GetStorageLayoutRequest.newBuilder()
-              .setPrefix(prefix)
-              .setName(StorageLayoutName.format("_", bucketName))
-              .build();
-
       try (ITraceOperation to = TraceOperation.addToExistingTrace("getStorageLayout.HN")) {
-        StorageLayout storageLayout = storageControlClient.getStorageLayout(request);
-        result =
-            storageLayout.hasHierarchicalNamespace()
-                && storageLayout.getHierarchicalNamespace().getEnabled();
+        BucketStorageLayout b = request.execute();
+        result = b.getHierarchicalNamespace().getEnabled();
       }
-      System.out.printf("Result using Storage Control client");
-    }
 
     logger.atInfo().log("Checking if %s is HN enabled returned %s", src, result);
 
