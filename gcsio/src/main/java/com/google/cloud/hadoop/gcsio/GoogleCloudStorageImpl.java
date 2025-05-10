@@ -46,6 +46,7 @@ import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.services.storage.Storage;
 import com.google.api.services.storage.StorageRequest;
 import com.google.api.services.storage.model.Bucket;
+import com.google.api.services.storage.model.BucketStorageLayout;
 import com.google.api.services.storage.model.Buckets;
 import com.google.api.services.storage.model.ComposeRequest;
 import com.google.api.services.storage.model.Objects;
@@ -2414,27 +2415,41 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
       return isEnabled;
     }
 
-    String prefix = src.getPath().substring(1);
+    boolean result = false;
 
-    StorageControlClient storageControlClient = lazyGetStorageControlClient();
-    GetStorageLayoutRequest request =
-        GetStorageLayoutRequest.newBuilder()
-            .setPrefix(prefix)
-            .setName(StorageLayoutName.format("_", bucketName))
-            .build();
+    boolean shouldUseApiary = true;
+    if (shouldUseApiary) {
+      Storage.Buckets.GetStorageLayout req =
+          initializeRequest(storage.buckets().getStorageLayout(bucketName), bucketName);
+      BucketStorageLayout b = req.execute();
+      result = b.getHierarchicalNamespace().getEnabled();
+      System.out.printf("Result using Apiary client");
 
-    try (ITraceOperation to = TraceOperation.addToExistingTrace("getStorageLayout.HN")) {
-      StorageLayout storageLayout = storageControlClient.getStorageLayout(request);
-      boolean result =
-          storageLayout.hasHierarchicalNamespace()
-              && storageLayout.getHierarchicalNamespace().getEnabled();
+    } else {
 
-      logger.atInfo().log("Checking if %s is HN enabled returned %s", src, result);
+      String prefix = src.getPath().substring(1);
 
-      cache.put(bucketName, result);
+      StorageControlClient storageControlClient = lazyGetStorageControlClient();
+      GetStorageLayoutRequest request =
+          GetStorageLayoutRequest.newBuilder()
+              .setPrefix(prefix)
+              .setName(StorageLayoutName.format("_", bucketName))
+              .build();
 
-      return result;
+      try (ITraceOperation to = TraceOperation.addToExistingTrace("getStorageLayout.HN")) {
+        StorageLayout storageLayout = storageControlClient.getStorageLayout(request);
+        result =
+            storageLayout.hasHierarchicalNamespace()
+                && storageLayout.getHierarchicalNamespace().getEnabled();
+      }
+      System.out.printf("Result using Storage Control client");
     }
+
+    logger.atInfo().log("Checking if %s is HN enabled returned %s", src, result);
+
+    cache.put(bucketName, result);
+
+    return result;
   }
 
   private StorageControlClient lazyGetStorageControlClient() throws IOException {
