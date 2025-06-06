@@ -116,6 +116,16 @@ public interface GoogleCloudStorage {
   void createEmptyObject(StorageResourceId resourceId) throws IOException;
 
   /**
+   * Creates HNS folder. The bucket must already exist. If the object already exists, it is
+   * overwritten. See {@link #create(StorageResourceId)} for the behavior if
+   * StorageResourceId.getGenerationId() is explicitly set.
+   *
+   * @param resourceId identifies a StorageObject
+   * @throws IOException on IO error
+   */
+  void createFolder(StorageResourceId resourceId) throws IOException;
+
+  /**
    * Creates an empty object, useful for placeholders representing, for example, directories. The
    * bucket must already exist. If the object already exists, it is overwritten. See {@link
    * #create(StorageResourceId)} for the behavior if StorageResourceId.getGenerationId() is

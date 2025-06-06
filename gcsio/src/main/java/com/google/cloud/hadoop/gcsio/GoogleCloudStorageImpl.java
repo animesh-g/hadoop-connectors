@@ -49,6 +49,7 @@ import com.google.api.services.storage.model.Bucket;
 import com.google.api.services.storage.model.BucketStorageLayout;
 import com.google.api.services.storage.model.Buckets;
 import com.google.api.services.storage.model.ComposeRequest;
+import com.google.api.services.storage.model.ManagedFolder;
 import com.google.api.services.storage.model.Objects;
 import com.google.api.services.storage.model.RewriteResponse;
 import com.google.api.services.storage.model.StorageObject;
@@ -556,6 +557,28 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
     checkArgument(
         resourceId.isStorageObject(), "Expected full StorageObject id, got %s", resourceId);
     createEmptyObject(resourceId, EMPTY_OBJECT_CREATE_OPTIONS);
+  }
+
+  /**
+   * See {@link GoogleCloudStorage#createFolder(StorageResourceId)} for details about expected
+   * behavior.
+   */
+  @Override
+  public void createFolder(StorageResourceId resourceId) throws IOException {
+    logger.atFiner().log("createFolder(%s)", resourceId);
+    checkArgument(
+        resourceId.isStorageObject(), "Expected full StorageObject id, got %s", resourceId);
+
+    ManagedFolder folder = new ManagedFolder().setName(resourceId.getObjectName());
+    try {
+
+      Storage.ManagedFolders.Insert insertFolder =
+          initializeRequest(
+              storage.managedFolders().insert(resourceId.getBucketName(), folder),
+              resourceId.getBucketName());
+    } catch (IOException e) {
+      System.out.println("Error in creating folder " + e.getMessage());
+    }
   }
 
   @Override
