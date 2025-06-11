@@ -49,7 +49,6 @@ import com.google.api.services.storage.model.Bucket;
 import com.google.api.services.storage.model.BucketStorageLayout;
 import com.google.api.services.storage.model.Buckets;
 import com.google.api.services.storage.model.ComposeRequest;
-import com.google.api.services.storage.model.ManagedFolder;
 import com.google.api.services.storage.model.Objects;
 import com.google.api.services.storage.model.RewriteResponse;
 import com.google.api.services.storage.model.StorageObject;
@@ -569,16 +568,16 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
     checkArgument(
         resourceId.isStorageObject(), "Expected full StorageObject id, got %s", resourceId);
 
-    ManagedFolder folder = new ManagedFolder().setName(resourceId.getObjectName());
-    try {
+    CreateFolderRequest request =
+        CreateFolderRequest.newBuilder()
+            .setFolderId(resourceId.getObjectName())
+            .setParent(resourceId.getBucketName())
+            .build();
+    StorageControlClient client = lazyGetStorageControlClient();
 
-      Storage.ManagedFolders.Insert insertFolder =
-          initializeRequest(
-              storage.managedFolders().insert(resourceId.getBucketName(), folder),
-              resourceId.getBucketName());
-    } catch (IOException e) {
-      System.out.println("Error in creating folder " + e.getMessage());
-    }
+    Folder newFolder = client.createFolder(request);
+
+    System.out.printf("Created folder: %s%n", newFolder.getName());
   }
 
   @Override
