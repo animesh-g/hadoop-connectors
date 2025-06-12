@@ -28,12 +28,13 @@ import com.google.cloud.hadoop.util.GoogleCloudStorageEventBus;
 import com.google.cloud.hadoop.util.LoggingMediaHttpUploaderProgressListener;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
+import com.google.common.io.BaseEncoding;
+import com.google.common.primitives.Ints;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -90,11 +91,43 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
   @Override
   public synchronized int write(ByteBuffer src) throws IOException {
+    System.out.println("Animesh: write call");
+    System.out.println(src.toString());
     ByteBuffer dup = src.duplicate();
     int written = super.write(src);
     hash(dup, written);
     return written;
   }
+
+  // private long hash(ByteBuffer src, long written) {
+  //   // Math.toIntExact will throw an ArithmeticException if 'written' is too large for an int,
+  //   // which is appropriate since Buffer operations use integers.
+  //   int bytesToProcess = Math.toIntExact(written);
+  //
+  //   // Ensure we are not asked to process more bytes than the buffer actually has available.
+  //   if (bytesToProcess > src.remaining()) {
+  //     throw new IndexOutOfBoundsException(
+  //         "Argument 'written' is greater than the buffer's remaining bytes.");
+  //   }
+  //
+  //   // Create a temporary, independent view of the source buffer to avoid side-effects.
+  //   ByteBuffer bufferToHash = src.slice();
+  //
+  //   // Limit this view to exactly the number of bytes that were processed.
+  //   bufferToHash.limit(bytesToProcess);
+  //
+  //   // Update the cumulative checksum with the data that was written.
+  //   cumulativeCrc32c.putBytes(bufferToHash);
+  //
+  //   // CORRECT: Increment total length by the number of bytes actually processed.
+  //   totalLength += bytesToProcess;
+  //
+  //   // Advance the position of the original source buffer by the same amount.
+  //   src.position(src.position() + bytesToProcess);
+  //
+  //   // Return the number of bytes consumed.
+  //   return written;
+  // }
 
   private long hash(ByteBuffer src, long written) {
     ByteBuffer buffer = src.slice();
@@ -122,7 +155,8 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
   private void closeInteral() throws IOException {
     // String srcCrc = cumulativeCrc32c.hash().toString();
-    String srcCrc = Base64.getEncoder().encodeToString(cumulativeCrc32c.hash().asBytes());
+    String srcCrc = BaseEncoding.base64().encode(Ints.toByteArray(cumulativeCrc32c.hash().asInt()));
+    // String srcCrc = Base64.getEncoder().encodeToString(cumulativeCrc32c.hash().asBytes());
     String destCrc = this.actualCrc32c;
 
     byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
