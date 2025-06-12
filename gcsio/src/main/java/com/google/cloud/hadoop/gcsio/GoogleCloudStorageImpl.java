@@ -558,6 +558,28 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
     createEmptyObject(resourceId, EMPTY_OBJECT_CREATE_OPTIONS);
   }
 
+  /**
+   * See {@link GoogleCloudStorage#createFolder(StorageResourceId)} for details about expected
+   * behavior.
+   */
+  @Override
+  public void createFolder(StorageResourceId resourceId) throws IOException {
+    logger.atFiner().log("createFolder(%s)", resourceId);
+    checkArgument(
+        resourceId.isStorageObject(), "Expected full StorageObject id, got %s", resourceId);
+
+    CreateFolderRequest request =
+        CreateFolderRequest.newBuilder()
+            .setFolderId(resourceId.getObjectName())
+            .setParent(resourceId.getBucketName())
+            .build();
+    StorageControlClient client = lazyGetStorageControlClient();
+
+    Folder newFolder = client.createFolder(request);
+
+    System.out.printf("Created folder: %s%n", newFolder.getName());
+  }
+
   @Override
   public void createEmptyObjects(List<StorageResourceId> resourceIds, CreateObjectOptions options)
       throws IOException {
