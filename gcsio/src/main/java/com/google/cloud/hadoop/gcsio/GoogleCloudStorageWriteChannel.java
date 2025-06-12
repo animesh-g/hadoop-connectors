@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -120,7 +121,8 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   }
 
   private void closeInteral() throws IOException {
-    String srcCrc = cumulativeCrc32c.hash().toString();
+    // String srcCrc = cumulativeCrc32c.hash().toString();
+    String srcCrc = Base64.getEncoder().encodeToString(cumulativeCrc32c.hash().asBytes());
     String destCrc = this.actualCrc32c;
 
     byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
