@@ -33,7 +33,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
 /** Implements WritableByteChannel to provide write access to GCS. */
@@ -54,7 +53,7 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   private final Hasher cumulativeCrc32c;
   private long totalLength;
 
-  private String actualCrc32c;
+  private static String actualCrc32c;
 
   /**
    * Constructs an instance of GoogleCloudStorageWriteChannel.
@@ -88,7 +87,7 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   }
 
   @Override
-  public int write(ByteBuffer src) throws IOException {
+  public synchronized int write(ByteBuffer src) throws IOException {
     ByteBuffer dup = src.duplicate();
     int written = super.write(src);
     hash(dup, written);
@@ -120,25 +119,27 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   }
 
   private void closeInteral() throws IOException {
-    try {
-      String srcCrc = cumulativeCrc32c.toString();
-      String destCrc = uploadOperation.get().getCrc32c();
+    // try {
+    String srcCrc = cumulativeCrc32c.hash().toString();
+    String destCrc = this.actualCrc32c;
+    this.gcs.objects();
 
-      System.out.println("Src CRC32 = " + srcCrc + "Destination CRC32 = " + destCrc);
-      if (srcCrc != destCrc) {
-        throw new IOException("");
-      }
-    } catch (InterruptedException e) {
-      throw new IOException(e.getCause());
-    } catch (ExecutionException e) {
-      throw new IOException(e.getCause());
+    System.out.println("Src CRC32 = " + srcCrc + "Destination CRC32 = " + destCrc);
+    logger.atSevere().log("Src CRC32: '%s'. dest CRC32: %s", srcCrc, destCrc);
+    if (srcCrc != destCrc) {
+      throw new IOException("");
     }
+    // } catch (InterruptedException e) {
+    //   throw new IOException(e.getCause());
+    // } catch (ExecutionException e) {
+    //   throw new IOException(e.getCause());
+    // }
   }
 
   @Override
   public void startUpload(InputStream pipeSource) throws IOException {
 
-    System.out.println("In GoogleCloudStorageWriteChannel , starting upload");
+    System.out.println("In GoogleCloudStorageWriteChannel , starting upload 1");
     // Connect pipe-source to the stream used by uploader.
     InputStreamContent objectContentStream =
         new InputStreamContent(getContentType(), pipeSource)
@@ -155,6 +156,17 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     // Given that the two ends of the pipe must operate asynchronous relative
     // to each other, we need to start the upload operation on a separate thread.
     uploadOperation = threadPool.submit(new UploadOperation(request, pipeSource));
+
+    // try {
+    //   uploadOperation.wait();
+    //   this.actualCrc32c = uploadOperation.get().getCrc32c();
+    //
+    //   System.out.println("Src CRC32 = " + this.actualCrc32c);
+    // } catch (InterruptedException e) {
+    //   throw new IOException(e.getCause());
+    // } catch (ExecutionException e) {
+    //   throw new IOException(e.getCause());
+    // }
   }
 
   Storage.Objects.Insert createRequest(InputStreamContent inputStream) throws IOException {
@@ -224,6 +236,8 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     // Read end of the pipe. This object declared final for safe object publishing.
     private final InputStream pipeSource;
 
+    public static String crc32 = "";
+
     /** Constructs an instance of UploadOperation. */
     public UploadOperation(Storage.Objects.Insert uploadObject, InputStream pipeSource) {
       this.uploadObject = uploadObject;
@@ -235,7 +249,10 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
       // Try-with-resource will close this end of the pipe so that
       // the writer at the other end will not hang indefinitely.
       try (InputStream ignore = pipeSource) {
-        return uploadObject.execute();
+        StorageObject resp = uploadObject.execute();
+        actualCrc32c = resp.getCrc32c();
+        System.out.println("crc from server" + resp.getCrc32c());
+        return resp;
       } catch (IOException e) {
         GoogleCloudStorageEventBus.postOnException();
         StorageObject response = createResponseFromException(e);
