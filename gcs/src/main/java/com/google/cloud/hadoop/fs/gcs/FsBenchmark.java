@@ -309,7 +309,6 @@ public class FsBenchmark extends Configured implements Tool {
 
   private void benchmarkRead(
       FileSystem fs, Path testFile, int readSize, int numReads, int numThreads) {
-    System.out.println("Animesh: in benchmarkRead");
     System.out.printf(
         "Running read test using %d bytes reads to fully read '%s' file %d times in %d threads%n",
         readSize, testFile, numReads, numThreads);

@@ -200,7 +200,6 @@ class GoogleHadoopOutputStream extends OutputStream
       throws IOException {
     WritableByteChannel channel;
 
-    System.out.println("create fs output stream in Google hadoop output stream");
     try {
       channel = gcsfs.create(gcsPath, options);
     } catch (java.nio.file.FileAlreadyExistsException e) {

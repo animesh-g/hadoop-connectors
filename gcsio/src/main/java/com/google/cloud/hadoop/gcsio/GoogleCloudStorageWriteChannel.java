@@ -123,7 +123,6 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     String srcCrc = cumulativeCrc32c.hash().toString();
     String destCrc = this.actualCrc32c;
 
-
     byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
     byte[] destbytes = hexStringToByteArray(this.actualCrc32c);
 
@@ -163,17 +162,6 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     // Given that the two ends of the pipe must operate asynchronous relative
     // to each other, we need to start the upload operation on a separate thread.
     uploadOperation = threadPool.submit(new UploadOperation(request, pipeSource));
-
-    // try {
-    //   uploadOperation.wait();
-    //   this.actualCrc32c = uploadOperation.get().getCrc32c();
-    //
-    //   System.out.println("Src CRC32 = " + this.actualCrc32c);
-    // } catch (InterruptedException e) {
-    //   throw new IOException(e.getCause());
-    // } catch (ExecutionException e) {
-    //   throw new IOException(e.getCause());
-    // }
   }
 
   Storage.Objects.Insert createRequest(InputStreamContent inputStream) throws IOException {
