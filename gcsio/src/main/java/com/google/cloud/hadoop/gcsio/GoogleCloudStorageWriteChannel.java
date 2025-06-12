@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -119,21 +120,27 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   }
 
   private void closeInteral() throws IOException {
-    // try {
     String srcCrc = cumulativeCrc32c.hash().toString();
     String destCrc = this.actualCrc32c;
-    this.gcs.objects();
 
-    System.out.println("Src CRC32 = " + srcCrc + "Destination CRC32 = " + destCrc);
+
+    byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
+    byte[] destbytes = hexStringToByteArray(this.actualCrc32c);
+
     logger.atSevere().log("Src CRC32: '%s'. dest CRC32: %s", srcCrc, destCrc);
-    if (srcCrc != destCrc) {
+    if (Arrays.equals(srcbytes, destbytes)) {
       throw new IOException("");
     }
-    // } catch (InterruptedException e) {
-    //   throw new IOException(e.getCause());
-    // } catch (ExecutionException e) {
-    //   throw new IOException(e.getCause());
-    // }
+  }
+
+  public static byte[] hexStringToByteArray(String s) {
+    int len = s.length();
+    byte[] data = new byte[len / 2];
+    for (int i = 0; i < len; i += 2) {
+      data[i / 2] =
+          (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1), 16));
+    }
+    return data;
   }
 
   @Override
@@ -235,8 +242,6 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
     // Read end of the pipe. This object declared final for safe object publishing.
     private final InputStream pipeSource;
-
-    public static String crc32 = "";
 
     /** Constructs an instance of UploadOperation. */
     public UploadOperation(Storage.Objects.Insert uploadObject, InputStream pipeSource) {
