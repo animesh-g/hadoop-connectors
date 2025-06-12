@@ -128,6 +128,7 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
     logger.atSevere().log("Src CRC32: '%s'. dest CRC32: %s", srcCrc, destCrc);
     if (Arrays.equals(srcbytes, destbytes)) {
+      // intentionally throwing on success for some debugging.
       throw new IOException("");
     }
   }
