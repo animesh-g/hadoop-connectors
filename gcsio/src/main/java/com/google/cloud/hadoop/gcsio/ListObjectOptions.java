@@ -38,7 +38,8 @@ public abstract class ListObjectOptions {
         .setDelimiter(PATH_DELIMITER)
         .setIncludePrefix(false)
         .setMaxResults(MAX_RESULTS_UNLIMITED)
-        .setFields(OBJECT_FIELDS);
+        .setFields(OBJECT_FIELDS)
+        .setVersionEnabled(false);
   }
 
   public abstract Builder toBuilder();
@@ -52,6 +53,9 @@ public abstract class ListObjectOptions {
 
   /** Maximum number of results to return, unlimited if negative or zero. */
   public abstract long getMaxResults();
+
+  /** Whether to include object versions */
+  public abstract boolean isVersionEnabled();
 
   /**
    * Comma separated list of object fields to include in the list response.
@@ -73,6 +77,8 @@ public abstract class ListObjectOptions {
     public abstract Builder setMaxResults(long maxResults);
 
     public abstract Builder setFields(String fields);
+
+    public abstract Builder setVersionEnabled(boolean includeVersion);
 
     public abstract ListObjectOptions build();
   }

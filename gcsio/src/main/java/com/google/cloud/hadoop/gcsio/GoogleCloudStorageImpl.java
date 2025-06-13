@@ -443,7 +443,8 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
             storageOptions.getWriteChannelOptions(),
             resourceId,
             options,
-            writeConditions) {
+            writeConditions,
+            this) {
           @Override
           public Storage.Objects.Insert createRequest(InputStreamContent inputStream)
               throws IOException {
@@ -1546,6 +1547,7 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
             objectNamePrefix,
             listOptions.getFields(),
             listOptions.getDelimiter(),
+            listOptions.isVersionEnabled(),
             maxResults);
 
     String pageToken = null;
@@ -1666,6 +1668,7 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
       String objectNamePrefix,
       String objectFields,
       String delimiter,
+      boolean isVersionEnabled,
       long maxResults)
       throws IOException {
     logger.atFiner().log(
@@ -1694,6 +1697,8 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
     if (!isNullOrEmpty(objectFields)) {
       listObject.setFields(String.format("items(%s),prefixes,nextPageToken", objectFields));
     }
+
+    listObject.setVersions(isVersionEnabled);
 
     return listObject;
   }
@@ -1747,6 +1752,7 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
             objectNamePrefix,
             listOptions.getFields(),
             listOptions.getDelimiter(),
+            listOptions.isVersionEnabled(),
             listOptions.getMaxResults());
     if (pageToken != null) {
       logger.atFiner().log("listObjectInfoPage: next page %s", pageToken);

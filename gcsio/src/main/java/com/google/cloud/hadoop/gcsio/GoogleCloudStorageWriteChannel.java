@@ -26,6 +26,7 @@ import com.google.cloud.hadoop.util.AsyncWriteChannelOptions;
 import com.google.cloud.hadoop.util.ClientRequestHelper;
 import com.google.cloud.hadoop.util.GoogleCloudStorageEventBus;
 import com.google.cloud.hadoop.util.LoggingMediaHttpUploaderProgressListener;
+// import com.google.cloud.hadoop.gcsio.GoogleCloudStorageImpl;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
@@ -34,7 +35,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -58,6 +62,8 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
   private static String actualCrc32c;
 
+  private GoogleCloudStorage gcsimpl;
+
   /**
    * Constructs an instance of GoogleCloudStorageWriteChannel.
    *
@@ -76,7 +82,8 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
       AsyncWriteChannelOptions channelOptions,
       StorageResourceId resourceId,
       CreateObjectOptions createOptions,
-      ObjectWriteConditions writeConditions) {
+      ObjectWriteConditions writeConditions,
+      GoogleCloudStorage gcsimpl) {
     super(uploadThreadPool, channelOptions);
     this.clientRequestHelper = requestHelper;
     this.gcs = gcs;
@@ -86,48 +93,19 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     this.totalLength = 0;
     this.cumulativeCrc32c = Hashing.crc32c().newHasher();
     this.actualCrc32c = "";
+    this.gcsimpl = gcsimpl;
     System.out.println("In GoogleCloudStorageWriteChannel constructor");
   }
 
   @Override
   public synchronized int write(ByteBuffer src) throws IOException {
     System.out.println("Animesh: write call");
-    System.out.println(src.toString());
+    System.out.println(src.toString().length());
     ByteBuffer dup = src.duplicate();
     int written = super.write(src);
     hash(dup, written);
     return written;
   }
-
-  // private long hash(ByteBuffer src, long written) {
-  //   // Math.toIntExact will throw an ArithmeticException if 'written' is too large for an int,
-  //   // which is appropriate since Buffer operations use integers.
-  //   int bytesToProcess = Math.toIntExact(written);
-  //
-  //   // Ensure we are not asked to process more bytes than the buffer actually has available.
-  //   if (bytesToProcess > src.remaining()) {
-  //     throw new IndexOutOfBoundsException(
-  //         "Argument 'written' is greater than the buffer's remaining bytes.");
-  //   }
-  //
-  //   // Create a temporary, independent view of the source buffer to avoid side-effects.
-  //   ByteBuffer bufferToHash = src.slice();
-  //
-  //   // Limit this view to exactly the number of bytes that were processed.
-  //   bufferToHash.limit(bytesToProcess);
-  //
-  //   // Update the cumulative checksum with the data that was written.
-  //   cumulativeCrc32c.putBytes(bufferToHash);
-  //
-  //   // CORRECT: Increment total length by the number of bytes actually processed.
-  //   totalLength += bytesToProcess;
-  //
-  //   // Advance the position of the original source buffer by the same amount.
-  //   src.position(src.position() + bytesToProcess);
-  //
-  //   // Return the number of bytes consumed.
-  //   return written;
-  // }
 
   private long hash(ByteBuffer src, long written) {
     ByteBuffer buffer = src.slice();
@@ -159,25 +137,76 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     // String srcCrc = Base64.getEncoder().encodeToString(cumulativeCrc32c.hash().asBytes());
     String destCrc = this.actualCrc32c;
 
-    byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
-    byte[] destbytes = hexStringToByteArray(this.actualCrc32c);
+    // byte[] srcbytes = cumulativeCrc32c.hash().asBytes();
+    // byte[] destbytes = hexStringToByteArray(this.actualCrc32c);
 
     logger.atSevere().log("Src CRC32: '%s'. dest CRC32: %s", srcCrc, destCrc);
-    if (Arrays.equals(srcbytes, destbytes)) {
-      // intentionally throwing on success for some debugging.
+    if (srcCrc != destCrc) {
+      deleteOrRestoreObject();
       throw new IOException("");
     }
   }
 
-  public static byte[] hexStringToByteArray(String s) {
-    int len = s.length();
-    byte[] data = new byte[len / 2];
-    for (int i = 0; i < len; i += 2) {
-      data[i / 2] =
-          (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1), 16));
+  private void deleteOrRestoreObject() {
+    // GoogleCloudStorageImpl gcsUtil = new
+    // GoogleCloudStorageImpl(options.getCloudStorageOptions());
+    // GoogleCloudStorageImpl gcsUtil = GoogleCloudStorageImpl.builder()
+    //     .setOptions(options.getCloudStorageOptions())
+    //     .setCredentials(credentials)
+    //     .setDownscopedAccessTokenFn(downscopedAccessTokenFn)
+    //     .build();
+    try {
+
+      ListObjectOptions options = ListObjectOptions.builder().setVersionEnabled(true).build();
+      List<GoogleCloudStorageItemInfo> itemList =
+          this.gcsimpl.listObjectInfo(
+              this.resourceId.getBucketName(), this.resourceId.getObjectName(), options);
+
+      GoogleCloudStorageItemInfo last = null;
+      GoogleCloudStorageItemInfo secondToLast = null;
+      int len = itemList.size();
+      if (len >= 1) {
+        last = itemList.get(len - 1);
+      }
+      if (len >= 2) {
+        secondToLast = itemList.get(len - 2);
+      }
+      List<StorageResourceId> objectsTodelete = new ArrayList<StorageResourceId>();
+
+      if (secondToLast != null && last != null) {
+
+        StorageResourceId src = secondToLast.getResourceId();
+        StorageResourceId dest = last.getResourceId();
+
+        Map<StorageResourceId, StorageResourceId> sourceToDestinationObjectsMap = new HashMap<>(1);
+        sourceToDestinationObjectsMap.put(src, dest);
+
+        this.gcsimpl.copy(sourceToDestinationObjectsMap);
+
+        objectsTodelete.add(secondToLast.getResourceId());
+        this.gcsimpl.deleteObjects(objectsTodelete);
+
+      } else if (last != null) {
+        // deleting last object as it was the only one
+        objectsTodelete.add(last.getResourceId());
+        this.gcsimpl.deleteObjects(objectsTodelete);
+      }
+
+    } catch (Exception e) {
+      System.out.println("Some failure");
     }
-    return data;
   }
+
+  // public static byte[] hexStringToByteArray(String s) {
+  //   int len = s.length();
+  //   byte[] data = new byte[len / 2];
+  //   for (int i = 0; i < len; i += 2) {
+  //     data[i / 2] =
+  //         (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1),
+  // 16));
+  //   }
+  //   return data;
+  // }
 
   @Override
   public void startUpload(InputStream pipeSource) throws IOException {
