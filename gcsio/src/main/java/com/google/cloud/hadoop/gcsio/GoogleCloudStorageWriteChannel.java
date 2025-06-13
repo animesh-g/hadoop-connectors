@@ -90,7 +90,11 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
 
   @Override
   public synchronized int write(ByteBuffer src) throws IOException {
-    ByteBuffer dup = src.duplicate();
+    int originalPosition = src.position();
+    ByteBuffer dup = ByteBuffer.allocate(src.remaining());
+    dup.put(src);
+
+    src.position(originalPosition);
 
     if (shouldFlipBit()) {
       injectBitFlip(src);
