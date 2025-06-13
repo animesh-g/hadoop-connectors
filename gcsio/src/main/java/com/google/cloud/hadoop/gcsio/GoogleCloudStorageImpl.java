@@ -1083,7 +1083,7 @@ public class GoogleCloudStorageImpl implements GoogleCloudStorage {
   public void copy(Map<StorageResourceId, StorageResourceId> sourceToDestinationObjectsMap)
       throws IOException {
 
-    validateCopyArguments(sourceToDestinationObjectsMap, this);
+    // validateCopyArguments(sourceToDestinationObjectsMap, this);
 
     if (sourceToDestinationObjectsMap.isEmpty()) {
       return;
