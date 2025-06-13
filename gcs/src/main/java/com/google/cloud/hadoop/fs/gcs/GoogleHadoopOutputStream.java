@@ -199,6 +199,7 @@ class GoogleHadoopOutputStream extends OutputStream
       GoogleCloudStorageFileSystem gcsfs, URI gcsPath, CreateFileOptions options)
       throws IOException {
     WritableByteChannel channel;
+
     try {
       channel = gcsfs.create(gcsPath, options);
     } catch (java.nio.file.FileAlreadyExistsException e) {
