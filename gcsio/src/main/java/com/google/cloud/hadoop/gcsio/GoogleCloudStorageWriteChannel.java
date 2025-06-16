@@ -31,7 +31,6 @@ import com.google.common.primitives.Ints;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
-import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
@@ -49,14 +48,6 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
   private final ClientRequestHelper<StorageObject> clientRequestHelper;
 
   private GoogleCloudStorageItemInfo completedItemInfo = null;
-
-  /**
-   * The probability (0.0 to 1.0) of injecting a bit-flip fault on any given write. For example, 0.1
-   * means a 10% chance.
-   */
-  private static final double BIT_FLIP_PROBABILITY = 0.1; // 10% chance
-
-  private static final Random random = new Random();
 
   /**
    * Constructs an instance of GoogleCloudStorageWriteChannel.
@@ -83,92 +74,6 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
     this.resourceId = resourceId;
     this.createOptions = createOptions;
     this.writeConditions = writeConditions;
-    this.cumulativeCrc32c = Hashing.crc32c().newHasher();
-    this.actualCrc32c = "";
-    this.storageOptions = options;
-  }
-
-  @Override
-  public synchronized int write(ByteBuffer src) throws IOException {
-    int originalPosition = src.position();
-    ByteBuffer dup = ByteBuffer.allocate(src.remaining());
-    dup.put(src);
-
-    src.position(originalPosition);
-
-    if (shouldFlipBit()) {
-      injectBitFlip(src);
-    }
-
-    int written = super.write(src);
-    if (this.storageOptions.isChecksumWriteEnabled()) {
-      hash(dup, written);
-    }
-    return written;
-  }
-
-  private boolean shouldFlipBit() {
-    // Return true if the buffer has data and our random check passes.
-    return BIT_FLIP_PROBABILITY > 0 && random.nextDouble() < BIT_FLIP_PROBABILITY;
-  }
-
-  private void injectBitFlip(ByteBuffer buffer) {
-    if (!buffer.hasRemaining()) {
-      return;
-    }
-
-    int bytesToFlipFrom = buffer.remaining();
-    int randomByteOffset = random.nextInt(bytesToFlipFrom);
-    int absoluteBytePosition = buffer.position() + randomByteOffset;
-
-    int randomBit = random.nextInt(8);
-    byte flipMask = (byte) (1 << randomBit); // Create a mask e.g., 00010000
-
-    byte originalByte = buffer.get(absoluteBytePosition);
-    byte flippedByte = (byte) (originalByte ^ flipMask);
-
-    System.out.printf(
-        "Flipping bit %d at position %d. Original: %s, Flipped: %s%n",
-        randomBit,
-        absoluteBytePosition,
-        Integer.toBinaryString(originalByte & 255),
-        Integer.toBinaryString(flippedByte & 255));
-
-    buffer.put(absoluteBytePosition, flippedByte);
-  }
-
-  private long hash(ByteBuffer src, long written) {
-    ByteBuffer buffer = src.slice();
-    int remaining = buffer.remaining();
-    int consumed = remaining;
-    if (written < remaining) {
-      int intExact = Math.toIntExact(written);
-      buffer.limit(intExact);
-      consumed = intExact;
-    }
-    cumulativeCrc32c.putBytes(buffer);
-    src.position(src.position() + consumed);
-    return consumed;
-  }
-
-  @Override
-  public void close() throws IOException {
-    if (super.isOpen()) {
-      super.close();
-      if (this.storageOptions.isChecksumWriteEnabled()) {
-        compareChecksums();
-      }
-    }
-  }
-
-  private void compareChecksums() throws IOException {
-    String srcCrc = BaseEncoding.base64().encode(Ints.toByteArray(cumulativeCrc32c.hash().asInt()));
-    if (!srcCrc.equals(this.actualCrc32c)) {
-      throw new IOException(
-          String.format(
-              "Data integrity check failed for resource '%s'. Client-calculated CRC32C (%s) does not match server-provided CRC32C (%s).",
-              getResourceString(), srcCrc, this.actualCrc32c));
-    }
   }
 
   @Override
