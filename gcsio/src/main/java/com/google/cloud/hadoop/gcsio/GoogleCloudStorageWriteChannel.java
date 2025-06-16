@@ -135,9 +135,10 @@ public class GoogleCloudStorageWriteChannel extends AbstractGoogleAsyncWriteChan
               "Data integrity check failed for resource '%s'. Client-calculated CRC32C (%s) did not match server-provided CRC32C (%s).",
               getResourceString(), srcCrc, serverProvidedCrc32c));
     } else {
-      logger.atFine().log(
-          "Data integrity check passed for resource '%s'. Client-calculated CRC32C (%s) matched the server-provided CRC32C (%s).",
-          getResourceString(), srcCrc, serverProvidedCrc32c);
+      System.out.print(
+          String.format(
+              "Data integrity check passed for resource '%s'. Client-calculated CRC32C (%s) matched the server-provided CRC32C (%s).",
+              getResourceString(), srcCrc, serverProvidedCrc32c));
     }
   }
 

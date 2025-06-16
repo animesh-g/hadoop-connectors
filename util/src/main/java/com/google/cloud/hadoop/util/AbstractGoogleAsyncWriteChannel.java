@@ -136,12 +136,17 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
     }
     try {
       int originalPosition = buffer.position();
+
+      ByteBuffer dup = ByteBuffer.allocate(buffer.remaining());
+      dup.put(buffer);
+      buffer.position(originalPosition);
+
       if (shouldFlipBit()) {
         injectBitFlip(buffer);
       }
       int writtenBytes = pipeSink.write(buffer);
       if (channelOptions.isRollingChecksumEnabled() && !reuploadFromCacheInitiated) {
-        addBytesToCumulativeChecksum(buffer, writtenBytes, originalPosition);
+        addBytesToCumulativeChecksum(dup, writtenBytes, originalPosition);
       }
       return writtenBytes;
     } catch (IOException e) {
