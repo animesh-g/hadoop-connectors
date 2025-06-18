@@ -32,6 +32,7 @@ import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.Pipe;
 import java.nio.channels.WritableByteChannel;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -61,6 +62,14 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
   private WritableByteChannel pipeSink;
 
   private ByteBuffer uploadCache = null;
+
+  private static final Random random = new Random();
+
+  /**
+   * The probability (0.0 to 1.0) of injecting a bit-flip fault on any given write. For example, 0.1
+   * means a 10% chance.
+   */
+  private static final double BIT_FLIP_PROBABILITY = 0.1; // 10% chance
 
   protected final Hasher cumulativeCrc32cHasher;
 
@@ -127,9 +136,17 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
     }
     try {
       int originalPosition = buffer.position();
+
+      ByteBuffer dup = ByteBuffer.allocate(buffer.remaining());
+      dup.put(buffer);
+      buffer.position(originalPosition);
+
+      if (shouldFlipBit()) {
+        injectBitFlip(buffer);
+      }
       int writtenBytes = pipeSink.write(buffer);
       if (channelOptions.isRollingChecksumEnabled() && !reuploadFromCacheInitiated) {
-        addBytesToCumulativeChecksum(buffer, writtenBytes, originalPosition);
+        addBytesToCumulativeChecksum(dup, writtenBytes, originalPosition);
       }
       return writtenBytes;
     } catch (IOException e) {
@@ -138,6 +155,39 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
               "Failed to write %d bytes in '%s'", buffer.remaining(), getResourceString()),
           e);
     }
+  }
+
+  private boolean shouldFlipBit() {
+    // Return true if the buffer has data and our random check passes.
+    return BIT_FLIP_PROBABILITY > 0 && random.nextDouble() < BIT_FLIP_PROBABILITY;
+  }
+
+  private void injectBitFlip(ByteBuffer src) {
+    logger.atWarning().log(
+        "Injecting data corrpution while writing objects! Do not use this in production!");
+    ByteBuffer buffer = src.duplicate();
+    if (!buffer.hasRemaining()) {
+      return;
+    }
+
+    int bytesToFlipFrom = buffer.remaining();
+    int randomByteOffset = random.nextInt(bytesToFlipFrom);
+    int absoluteBytePosition = buffer.position() + randomByteOffset;
+
+    int randomBit = random.nextInt(8);
+    byte flipMask = (byte) (1 << randomBit); // Create a mask e.g., 00010000
+
+    byte originalByte = buffer.get(absoluteBytePosition);
+    byte flippedByte = (byte) (originalByte ^ flipMask);
+
+    logger.atWarning().log(
+        "Warning!! Flipping bit %d at position %d. Original: %s, Flipped: %s%n",
+        randomBit,
+        absoluteBytePosition,
+        Integer.toBinaryString(originalByte & 255),
+        Integer.toBinaryString(flippedByte & 255));
+
+    buffer.put(absoluteBytePosition, flippedByte);
   }
 
   private void addBytesToCumulativeChecksum(
