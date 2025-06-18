@@ -163,6 +163,8 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
   }
 
   private void injectBitFlip(ByteBuffer src) {
+    logger.atWarning().log(
+        "Injecting data corrpution while writing objects! Do not use this in production!");
     ByteBuffer buffer = src.duplicate();
     if (!buffer.hasRemaining()) {
       return;
@@ -178,8 +180,8 @@ public abstract class AbstractGoogleAsyncWriteChannel<T> implements WritableByte
     byte originalByte = buffer.get(absoluteBytePosition);
     byte flippedByte = (byte) (originalByte ^ flipMask);
 
-    System.out.printf(
-        "Flipping bit %d at position %d. Original: %s, Flipped: %s%n",
+    logger.atWarning().log(
+        "Warning!! Flipping bit %d at position %d. Original: %s, Flipped: %s%n",
         randomBit,
         absoluteBytePosition,
         Integer.toBinaryString(originalByte & 255),
