@@ -785,9 +785,20 @@ public class GoogleHadoopFileSystemConfiguration {
         .build();
   }
 
-  static String getApplicationName(Configuration config) {
+  static String getApplicationNameSuffix(Configuration config) {
     String appNameSuffix = nullToEmpty(GCS_APPLICATION_NAME_SUFFIX.get(config, config::get));
+    String detectedEngineSuffix = ComputeEngineDetector.detectEngineSuffix();
+    if (!isNullOrEmpty(detectedEngineSuffix) && !appNameSuffix.contains(detectedEngineSuffix)) {
+      return appNameSuffix + detectedEngineSuffix;
+    }
+    return appNameSuffix;
+  }
+
+  static String getApplicationName(Configuration config) {
+    String appNameSuffix = nullToEmpty(getApplicationNameSuffix(config));
     String applicationName = GoogleHadoopFileSystem.GHFS_ID + appNameSuffix;
+    System.out.println("GoogleHadoopFileSystemConfiguration.getApplicationName: " + applicationName);
+    System.out.flush();
     logger.atFiner().log("getApplicationName(config: %s): %s", config, applicationName);
     return applicationName;
   }

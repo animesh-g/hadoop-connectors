@@ -446,7 +446,8 @@ public class GoogleHadoopFileSystem extends FileSystem implements IOStatisticsSo
 
   private void initializeCloudLogger(Configuration config) throws IOException {
     GoogleCredentials credentials = getCredentials(config);
-    String suffix = GCS_APPLICATION_NAME_SUFFIX.get(getConf(), getConf()::get);
+    String suffix =
+        GoogleHadoopFileSystemConfiguration.getApplicationNameSuffix(getConf());
     loggingInterceptor = createLoggingInterceptor(credentials, suffix);
     // Add the LoggingInterceptor to the root logger
     Logger rootLogger = Logger.getLogger("");
