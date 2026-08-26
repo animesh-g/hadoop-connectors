@@ -61,14 +61,19 @@ final class ComputeEngineDetector {
 
   @VisibleForTesting
   static Engine getOrDetectEngine() {
-    if (detectedEngine == null) {
-      synchronized (LOCK) {
-        if (detectedEngine == null) {
-          detectedEngine = detectEngineFromStackTrace();
-        }
-      }
+    if (detectedEngine != null) {
+      return detectedEngine;
     }
-    return detectedEngine;
+    synchronized (LOCK) {
+      if (detectedEngine != null) {
+        return detectedEngine;
+      }
+      Engine engine = detectEngineFromStackTrace();
+      if (engine != null) {
+        detectedEngine = engine;
+      }
+      return engine;
+    }
   }
 
   @VisibleForTesting
@@ -85,27 +90,45 @@ final class ComputeEngineDetector {
           StackWalker.getInstance()
               .walk(stream -> stream.collect(Collectors.toList()));
     } catch (Throwable t) {
-      logger.atWarning().withCause(t).log(
-          "Failed to inspect stack trace via StackWalker; skipping compute engine detection");
+      String errMsg = "Failed to inspect stack trace via StackWalker; skipping compute engine detection: " + t;
+      System.err.println(errMsg);
+      System.err.flush();
+      logger.atWarning().withCause(t).log("%s", errMsg);
       return null;
     }
 
-    // Print the complete stack trace in logs to debug caller identity
+    // Print the complete stack trace to System.out and logger for debugging caller identity
     StringBuilder sb = new StringBuilder();
-    sb.append("Inspecting caller stack trace for compute engine detection (")
+    sb.append("================================================================================\n")
+        .append("ComputeEngineDetector: inspecting caller stack trace (")
         .append(frames.size())
         .append(" frames):\n");
     for (StackWalker.StackFrame frame : frames) {
       sb.append("\tat ").append(frame.toString()).append("\n");
     }
+    sb.append("================================================================================");
+
+    System.out.println(sb.toString());
+    System.out.flush();
     logger.atInfo().log("%s", sb.toString());
 
     Engine engine = findMatchingEngine(frames);
     if (engine != null) {
-      logger.atInfo().log("ComputeEngineDetector: detected engine '%s'", engine);
+      String msg =
+          "ComputeEngineDetector: detected engine '"
+              + engine
+              + "' with suffix '"
+              + engine.getUserAgentSuffix()
+              + "'";
+      System.out.println(msg);
+      System.out.flush();
+      logger.atInfo().log("%s", msg);
     } else {
-      logger.atInfo().log(
-          "ComputeEngineDetector: no known compute engine recognized in caller stack trace");
+      String msg =
+          "ComputeEngineDetector: no known compute engine recognized in caller stack trace";
+      System.out.println(msg);
+      System.out.flush();
+      logger.atInfo().log("%s", msg);
     }
     return engine;
   }
@@ -115,8 +138,11 @@ final class ComputeEngineDetector {
     for (StackWalker.StackFrame frame : frames) {
       Engine engine = matchEngineFromClassName(frame.getClassName());
       if (engine != null) {
-        logger.atInfo().log(
-            "ComputeEngineDetector: matched %s from stack frame: %s", engine, frame);
+        String msg =
+            "ComputeEngineDetector: matched " + engine + " from stack frame: " + frame;
+        System.out.println(msg);
+        System.out.flush();
+        logger.atInfo().log("%s", msg);
         return engine;
       }
     }
